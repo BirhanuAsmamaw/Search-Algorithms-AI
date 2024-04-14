@@ -1,10 +1,5 @@
-import random
-import time
-import statistics
-import heapq
-from queue import Queue
+from asyncio import Queue as AsyncQueue
 
-# Define the Graph class
 class Graph:
     def __init__(self, directed=True):
         self.graph = {}
@@ -26,6 +21,20 @@ class Graph:
         else:
             self.graph[node1][node2] = weight
 
+    def delete_node(self, node):
+        if node in self.graph:
+            del self.graph[node]
+            del self.coordinates[node]
+            for n in self.graph:
+                if node in self.graph[n]:
+                    del self.graph[n][node]
+
+    def delete_edge(self, node1, node2):
+        if node1 in self.graph and node2 in self.graph[node1]:
+            del self.graph[node1][node2]
+            if not self.directed and node2 in self.graph and node1 in self.graph[node2]:
+                del self.graph[node2][node1]
+
     def get_neighbors(self, node):
         if node in self.graph:
             return self.graph[node].keys()
@@ -38,25 +47,89 @@ class Graph:
         else:
             return None
 
+    def __str__(self):
+        output = ""
+        for node in self.graph:
+            output += f"{node}: {self.graph[node]}\n"
+        return output
 
-# Define the search algorithms
+import random
+from asyncio import PriorityQueue, Queue
+import heapq
+import time
+
+def generate_random_graph(n, p):
+    graph = Graph(directed=False)
+    nodes = [f"Node_{i}" for i in range(n)]
+    
+    # Generate coordinates for nodes
+    coordinates = {node: (random.uniform(0, 100), random.uniform(0, 100)) for node in nodes}
+    
+    # Add nodes to the graph
+    for node, (x, y) in coordinates.items():
+        graph.add_node(node, latitude=x, longitude=y)
+    
+    # Connect nodes randomly based on probability p
+    for i in range(n):
+        for j in range(i + 1, n):
+            if random.random() < p:
+                weight = random.randint(1, 100)  # Random edge weight
+                graph.add_edge(nodes[i], nodes[j], weight)
+    
+    return graph
+
+async def bidirectional_search(graph, start_node, goal_node):
+    forward_visited = set()
+    backward_visited = set()
+    forward_queue = AsyncQueue()
+    backward_queue = AsyncQueue()
+    forward_queue.put_nowait((start_node, [start_node]))
+    backward_queue.put_nowait((goal_node, [goal_node]))
+
+    while not forward_queue.empty() and not backward_queue.empty():
+        forward_current_node, forward_path = forward_queue.get_nowait()
+        backward_current_node, backward_path = backward_queue.get_nowait()
+
+        if forward_current_node in backward_visited:
+            intersection_node = forward_current_node
+            backward_path.reverse()
+            return forward_path + backward_path[1:]
+
+        if forward_current_node not in forward_visited:
+            forward_visited.add(forward_current_node)
+            for neighbor in graph.get_neighbors(forward_current_node):
+                if neighbor not in forward_visited:
+                    forward_queue.put_nowait((neighbor, forward_path + [neighbor]))
+
+        if backward_current_node not in backward_visited:
+            backward_visited.add(backward_current_node)
+            for neighbor in graph.get_neighbors(backward_current_node):
+                if neighbor not in backward_visited:
+                    backward_queue.put_nowait((neighbor, backward_path + [neighbor]))
+
+    return None
+
 def dfs(graph, start_node, goal_node):
     visited = set()
-    stack = [(start_node, [start_node])]
+    stack = []
+    stack.append((start_node, [start_node]))
+
     while stack:
         current_node, path = stack.pop()
         if current_node == goal_node:
             return path
         if current_node not in visited:
             visited.add(current_node)
-            for neighbor in graph.get_neighbors(current_node):
+            for neighbor in reversed(list(graph.get_neighbors(current_node))):
                 if neighbor not in visited:
                     stack.append((neighbor, path + [neighbor]))
     return None
 
 def bfs(graph, start_node, goal_node):
     visited = set()
-    queue = [(start_node, [start_node])]
+    queue = []
+    queue.append((start_node, [start_node]))
+
     while queue:
         current_node, path = queue.pop(0)
         if current_node == goal_node:
@@ -70,10 +143,10 @@ def bfs(graph, start_node, goal_node):
 
 def ucs(graph, start_node, goal_node):
     visited = set()
-    pq = []
-    heapq.heappush(pq, (0, start_node, [start_node]))
-    while pq:
-        cost, current_node, path = heapq.heappop(pq)
+    pq = PriorityQueue()
+    pq.put((0, start_node, [start_node]))
+    while not pq.empty():
+        cost, current_node, path = pq.get()
         if current_node == goal_node:
             return path
         if current_node not in visited:
@@ -81,151 +154,74 @@ def ucs(graph, start_node, goal_node):
             for neighbor in graph.get_neighbors(current_node):
                 if neighbor not in visited:
                     new_cost = cost + graph.get_edge_weight(current_node, neighbor)
-                    heapq.heappush(pq, (new_cost, neighbor, path + [neighbor]))
-    return None
-
-def bidirectional_search(graph, start_node, goal_node):
-    forward_visited = set()
-    backward_visited = set()
-    forward_queue = Queue()
-    backward_queue = Queue()
-    forward_queue.put((start_node, [start_node]))
-    backward_queue.put((goal_node, [goal_node]))
-
-    while not forward_queue.empty() and not backward_queue.empty():
-        forward_current_node, forward_path = forward_queue.get()
-        backward_current_node, backward_path = backward_queue.get()
-
-        if forward_current_node in backward_visited:
-            intersection_node = forward_current_node
-            backward_path.reverse()
-            return forward_path + backward_path[1:]
-
-        if forward_current_node not in forward_visited:
-            forward_visited.add(forward_current_node)
-            for neighbor in graph.get_neighbors(forward_current_node):
-                if neighbor not in forward_visited:
-                    forward_queue.put((neighbor, forward_path + [neighbor]))
-
-        if backward_current_node not in backward_visited:
-            backward_visited.add(backward_current_node)
-            for neighbor in graph.get_neighbors(backward_current_node):
-                if neighbor not in backward_visited:
-                    backward_queue.put((neighbor, backward_path + [neighbor]))
-
+                    pq.put((new_cost, neighbor, path + [neighbor]))
     return None
 
 def greedy_search(graph, start_node, goal_node, heuristic):
     visited = set()
-    pq = []
-    heapq.heappush(pq, (heuristic[start_node], start_node, [start_node]))
-    while pq:
-        _, current_node, path = heapq.heappop(pq)
+    priority_queue = []
+    heapq.heappush(priority_queue, (heuristic[start_node], start_node, [start_node]))
+
+    while priority_queue:
+        _, current_node, path = heapq.heappop(priority_queue)
         if current_node == goal_node:
             return path
         if current_node not in visited:
             visited.add(current_node)
             for neighbor in graph.get_neighbors(current_node):
                 if neighbor not in visited:
-                    heapq.heappush(pq, (heuristic[neighbor], neighbor, path + [neighbor]))
+                    heapq.heappush(priority_queue, (heuristic[neighbor], neighbor, path + [neighbor]))
+
     return None
 
-def iterative_deepening_dfs(graph, start_node, goal_node):
-    depth_limit = 0
-    while True:
-        result = depth_limited_dfs(graph, start_node, goal_node, depth_limit)
-        if result is not None:
-            return result
-        depth_limit += 1
-
-def depth_limited_dfs(graph, start_node, goal_node, depth_limit):
+def a_star_search(graph, start_node, goal_node, heuristic):
     visited = set()
-    stack = [(start_node, [start_node], 0)]
-    while stack:
-        current_node, path, depth = stack.pop()
-        if depth > depth_limit:
-            continue
+    priority_queue = []
+    heapq.heappush(priority_queue, (heuristic[start_node], start_node, [start_node], 0))
+
+    while priority_queue:
+        _, current_node, path, current_cost = heapq.heappop(priority_queue)
         if current_node == goal_node:
             return path
         if current_node not in visited:
             visited.add(current_node)
             for neighbor in graph.get_neighbors(current_node):
+                new_cost = current_cost + graph.get_edge_weight(current_node, neighbor)
                 if neighbor not in visited:
-                    stack.append((neighbor, path + [neighbor], depth + 1))
+                    heapq.heappush(priority_queue, (new_cost + heuristic[neighbor], neighbor, path + [neighbor], new_cost))
+
     return None
 
-def a_star_search(graph, start_node, goal_node, heuristic, cost):
-    visited = set()
-    pq = []
-    heapq.heappush(pq, (0 + heuristic[start_node], start_node, [start_node]))
-    while pq:
-        _, current_node, path = heapq.heappop(pq)
-        if current_node == goal_node:
-            return path
-        if current_node not in visited:
-            visited.add(current_node)
-            for neighbor in graph.get_neighbors(current_node):
-                if neighbor not in visited:
-                    new_cost = cost[current_node] + graph.get_edge_weight(current_node, neighbor)
-                    heapq.heappush(pq, (new_cost + heuristic[neighbor], neighbor, path + [neighbor]))
-    return None
 
-# Function to generate random graphs
-def generate_random_graph(n, p):
-    graph = Graph(directed=False)
-    nodes_data = {}
-    for i in range(n):
-        latitude = random.uniform(0, 100)
-        longitude = random.uniform(0, 100)
-        node_name = f"Node_{i}"
-        nodes_data[node_name] = (latitude, longitude)
-    for node, (latitude, longitude) in nodes_data.items():
-        graph.add_node(node, latitude, longitude)
-    for node1 in nodes_data.keys():
-        for node2 in nodes_data.keys():
-            if node1 != node2 and random.random() < p:
-                weight = random.uniform(1, 100)  # Random edge weight
-                graph.add_edge(node1, node2, weight)
-    return graph
+algorithm_functions = [dfs, bfs, ucs, bidirectional_search, greedy_search, a_star_search]
+algorithm_names = ["DFS", "BFS", "UCS", "Bidirectional Search", "Greedy Search", "A* Search"]
 
-# Function to randomly select 10 nodes from a graph
-def select_random_nodes(graph):
-    return random.sample(list(graph.graph.keys()), 10)
+results = []
 
-# Function to run experiments and benchmark the algorithms
-def run_experiments():
-    num_trials = 10
-    results = {}
+graph_settings = []
+for n in [10, 20, 30, 40]:
+    for p in [0.2, 0.4, 0.6, 0.8]:
+        graph = generate_random_graph(n, p)
+        graph_settings.append((n, p, graph))
 
-    for n in [10, 20, 30, 40]:
-        for p in [0.2, 0.4, 0.6, 0.8]:
-            avg_runtimes = {}
-            for algorithm in [dfs, bfs, iterative_deepening_dfs]:
-                runtimes = []
-                for _ in range(num_trials):
-                    # Generate random graph
-                    graph = generate_random_graph(n, p)
-                    # Randomly select 10 nodes
-                    random_nodes = select_random_nodes(graph)
-                    # Measure runtime
-                    start_time = time.time()
-                    for i in range(len(random_nodes)):
-                        for j in range(i+1, len(random_nodes)):
-                            algorithm(graph, random_nodes[i], random_nodes[j])
-                    end_time = time.time()
-                    runtime = end_time - start_time
-                    runtimes.append(runtime)
-                avg_runtime = statistics.mean(runtimes)
-                avg_runtimes[algorithm.__name__] = avg_runtime
-            results[(n, p)] = avg_runtimes
-
-    return results
-
-# Run experiments
-experiment_results = run_experiments()
+for n, p, graph in graph_settings:
+    random_nodes = {f"Node_{random.randint(0, n - 1)}" for _ in range(10)}
+    heuristic = {node: random.randint(1, 100) for node in graph.graph.keys()}  # Dummy heuristic
+    for algorithm, algorithm_name in zip(algorithm_functions, algorithm_names):
+        total_time = 0
+        for _ in range(5):
+            start_time = time.time()
+            for node1 in random_nodes:
+                for node2 in random_nodes:
+                    if node1 != node2:
+                        if algorithm_name in ["Greedy Search", "A* Search"]:  # Provide heuristic for Greedy Search and A* Search
+                            algorithm(graph, node1, node2, heuristic)
+                        else:
+                            algorithm(graph, node1, node2)  # Skip heuristic for other algorithms
+            total_time += (time.time() - start_time)
+        average_time = total_time / 5
+        results.append((algorithm_name, n, p, average_time))
 
 # Print results
-for (n, p), avg_runtimes in experiment_results.items():
-    print(f"Graph with {n} nodes and edge probability {p}:")
-    for algorithm, avg_runtime in avg_runtimes.items():
-        print(f"{algorithm}: {avg_runtime} seconds")
+for result in results:
+    print(result)
