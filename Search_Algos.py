@@ -1,61 +1,7 @@
-from graph1 import Graph
+from graph1 import Graph, graph_1
 import heapq
-from asyncio import PriorityQueue, Queue
-
-graph_1 = Graph(directed=False)
-
-nodes_data = {
-    "Oradea": (47.0465005, 21.9189438),
-    "Zerind": (46.622511, 21.517419),
-    "Arad": (46.166667, 21.316667),
-    "Timisoara": (45.759722, 21.23),
-    "Lugoj": (45.68861, 21.90306),
-    "Mehadia": (44.904114, 22.364516),
-    "Drobeta": (44.636923, 22.659734),
-    "Craiova": (44.333333, 23.816667000000052),
-    "Sibiu": (45.792784, 24.152068999999983),
-    "Rimnicu Vilcea": (45.099675, 24.369318),
-    "Fagaras": (45.8416403, 24.9730954),
-    "Pitesti": (44.860556, 24.867778000000044),
-    "Giurgiu": (43.9037076, 25.9699265),
-    "Bucharest": (44.439663, 26.096306),
-    "Urziceni": (44.7165317, 26.641121),
-    "Eforie": (44.058422, 28.633607),
-    "Hirsova": (44.6833333, 27.9333333),
-    "Vaslui": (46.640692, 27.727647),
-    "Iasi": (47.156944, 27.590278000000012),
-    "Neamt": (47.2, 26.3666667)
-}
-
-for node, (latitude, longitude) in nodes_data.items():
-    graph_1.add_node(node, latitude, longitude)
-
-graph_1.add_edge("Oradea", "Zerind", 71)
-graph_1.add_edge("Zerind", "Arad", 75)
-graph_1.add_edge("Arad", "Timisoara", 118)
-graph_1.add_edge("Timisoara", "Lugoj", 111)
-graph_1.add_edge("Lugoj", "Mehadia", 70)
-graph_1.add_edge("Mehadia", "Drobeta", 75)
-graph_1.add_edge("Drobeta", "Craiova", 120)
-graph_1.add_edge("Craiova", "Rimnicu Vilcea", 146)
-graph_1.add_edge("Rimnicu Vilcea", "Sibiu", 80)
-graph_1.add_edge("Sibiu", "Fagaras", 99)
-graph_1.add_edge("Fagaras", "Bucharest", 211)
-graph_1.add_edge("Bucharest", "Pitesti", 101)
-graph_1.add_edge("Pitesti", "Craiova", 138)
-graph_1.add_edge("Bucharest", "Giurgiu", 90)
-graph_1.add_edge("Bucharest", "Urziceni", 85)
-graph_1.add_edge("Urziceni", "Vaslui", 142)
-graph_1.add_edge("Vaslui", "Iasi", 92)
-graph_1.add_edge("Iasi", "Neamt", 87)
-graph_1.add_edge("Urziceni", "Hirsova", 98)
-graph_1.add_edge("Hirsova", "Eforie", 86)
-graph_1.add_edge("Sibiu", "Rimnicu Vilcea", 80)
-graph_1.add_edge("Rimnicu Vilcea", "Pitesti", 97)
-graph_1.add_edge("Rimnicu Vilcea", "Craiova", 146)
-graph_1.add_edge("Sibiu", "Arad", 140)
-graph_1.add_edge("Zerind", "Oradea", 71)
-
+from asyncio import PriorityQueue
+from queue import Queue
 
 def dfs(graph, start_node, goal_node):
     visited = set()
@@ -89,21 +35,102 @@ def bfs(graph, start_node, goal_node):
                     queue.append((neighbor, path + [neighbor]))
     return None
 
-def ucs(graph, start_node, goal_node):
-    visited = set()
-    pq = PriorityQueue()
-    pq.put((0, start_node, [start_node]))
-    while not pq.empty():
-        cost, current_node, path = pq.get()
-        if current_node == goal_node:
+
+def ucs(graph, start, goal):
+   
+    frontier = [(0, start)] 
+    explored = set()
+    cost_so_far = {start: 0}
+    came_from = {}
+
+    while frontier:
+        current_cost, current_node = heapq.heappop(frontier)
+
+        if current_node == goal:
+            path = [goal]
+            while current_node != start:
+                current_node = came_from[current_node]
+                path.append(current_node)
+            path.reverse()
             return path
-        if current_node not in visited:
-            visited.add(current_node)
-            for neighbor in graph.get_neighbors(current_node):
-                if neighbor not in visited:
-                    new_cost = cost + graph.get_edge_weight(current_node, neighbor)
-                    pq.put((new_cost, neighbor, path + [neighbor]))
+
+        explored.add(current_node)
+
+        for neighbor in graph.get_neighbors(current_node):
+            new_cost = current_cost + graph.get_edge_weight(current_node, neighbor)
+
+            if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
+                cost_so_far[neighbor] = new_cost
+                heapq.heappush(frontier, (new_cost, neighbor))
+                came_from[neighbor] = current_node
+
     return None
+
+
+
+def bidirectional_search(graph, source, destination):
+    source_parent = {}
+    source_visited = set()
+    source_queue = Queue()
+    dest_parent = {}
+    dest_visited = set()
+    path = []
+    dest_queue = Queue()
+
+    source_queue.put(source)
+    dest_queue.put(destination)
+    
+    if destination in graph.graph and source in graph.graph[destination]:
+        return [source, destination]
+
+    while True and not source_queue.empty() and not dest_queue.empty():
+        selected = source_queue.get()
+        source_visited.add(selected)
+        connected = graph.get_neighbors(selected)
+
+        if connected:
+            for child in connected:
+                if child not in source_parent:
+                    source_parent[child] = selected
+            
+                if child not in source_queue.queue and child not in source_visited:
+                    source_queue.put(child)
+        
+
+        selected_dest = dest_queue.get()
+        dest_visited.add(selected_dest)
+        connected_dest = graph.get_neighbors(selected_dest)
+        
+
+        if connected_dest:
+            for child in connected_dest:
+                if child not in dest_parent:
+                    dest_parent[child] = selected_dest
+                if child not in dest_queue.queue and child not in dest_visited:
+                    dest_queue.put(child)
+
+        for each in source_queue.queue:
+            if each == source or each == destination:
+                break
+            if each in dest_queue.queue:
+                path_dest = []
+                current_dest = each
+                while current_dest != destination:
+                    path_dest.append(current_dest)
+                    current_dest = dest_parent[current_dest]
+                path_dest.append(destination)
+                
+                current = each
+                while current != source:
+                    if current not in path:
+                        path.insert(0, current)
+                        current = source_parent[current]
+                
+                path.insert(0, source)
+            
+                return path + path_dest
+
+
 
 def iterative_deepening_dfs(graph, start_node, goal_node, max_depth=100):
     for depth in range(max_depth):
@@ -130,36 +157,7 @@ def dfs_limit(graph, start_node, goal_node, depth_limit):
                     stack.append((neighbor, path + [neighbor], depth + 1))
     return None
 
-def bidirectional_search(graph, start_node, goal_node):
-    forward_visited = set()
-    backward_visited = set()
-    forward_queue = Queue()
-    backward_queue = Queue()
-    forward_queue.put((start_node, [start_node]))
-    backward_queue.put((goal_node, [goal_node]))
 
-    while not forward_queue.empty() and not backward_queue.empty():
-        forward_current_node, forward_path = forward_queue.get()
-        backward_current_node, backward_path = backward_queue.get()
-
-        if forward_current_node in backward_visited:
-            intersection_node = forward_current_node
-            backward_path.reverse()
-            return forward_path + backward_path[1:]
-
-        if forward_current_node not in forward_visited:
-            forward_visited.add(forward_current_node)
-            for neighbor in graph.get_neighbors(forward_current_node):
-                if neighbor not in forward_visited:
-                    forward_queue.put((neighbor, forward_path + [neighbor]))
-
-        if backward_current_node not in backward_visited:
-            backward_visited.add(backward_current_node)
-            for neighbor in graph.get_neighbors(backward_current_node):
-                if neighbor not in backward_visited:
-                    backward_queue.put((neighbor, backward_path + [neighbor]))
-
-    return None
 
 
 def greedy_search(graph, start_node, goal_node, heuristic):
@@ -222,7 +220,7 @@ heuristic = {
     "Vaslui": 199,  
     "Iasi": 226,  
     "Neamt": 234,  
-    "Bucharest": 0  # Add heuristic for Bucharest
+    "Bucharest": 0 
 }
 path5 = greedy_search(graph_1,"Arad", "Bucharest", heuristic)
 path6 = iterative_deepening_dfs(graph_1,"Arad", "Bucharest")
@@ -246,7 +244,7 @@ cost = {
     "Vaslui": 142,
     "Iasi": 92,
     "Neamt": 87,
-    "Bucharest": 0  # Add cost for Bucharest
+    "Bucharest": 0  
 }
 path7 = a_star_search(graph_1,"Arad", "Bucharest",heuristic, cost)
 print(path1)
